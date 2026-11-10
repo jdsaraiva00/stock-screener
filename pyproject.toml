@@ -1,0 +1,26 @@
+[project]
+name = "screener"
+version = "0.1.0"
+description = "Personal US stock screener: local data cache, academic scores, backtest, dashboard"
+authors = [
+    { name = "João Saraiva", email = "joao.saraiva27@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "lxml>=6.1.3",
+    "pandas>=3.1.1",
+    "yfinance>=1.8.0",
+]
+
+[project.scripts]
+screener = "screener:main"
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]

@@ -1,0 +1,67 @@
+# Companies whose filing history is split across SEC registrants.
+#
+# When a company reorganises under a new holding company it gets a new CIK, and
+# its earlier filings stay under the old one. Listing the old CIK here makes the
+# refresh load both and store them as one history under the current CIK.
+#
+# List predecessors newest first. From each predecessor only filings made before
+# the successor's first periodic report are used, because many predecessors keep
+# filing afterwards as subsidiaries.
+#
+# Add an entry only after confirming both registrants on EDGAR
+# (https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=<number>).
+# `screener coverage` lists companies whose filed history looks too short.
+
+[successor.2115436]      # ExxonMobil Holdings Corp (XOM), registrant since July 2026
+ciks = [34088]           # Exxon Mobil Corp
+
+# The entries below were each confirmed by registrant name on EDGAR, 2026-11-10.
+
+[successor.1652044]      # Alphabet Inc. (GOOGL, GOOG), 2015
+ciks = [1288776]         # Google Inc.
+
+[successor.1744489]      # Walt Disney Co (DIS), 2019
+ciks = [1001039]         # TWDC Enterprises 18 Corp., formerly Walt Disney Co
+
+[successor.1739940]      # Cigna Group (CI), 2018
+ciks = [701221]          # Cigna Holding Co, formerly Cigna Corp
+
+[successor.1613103]      # Medtronic plc (MDT), 2015
+ciks = [64670]           # Medtronic Inc
+
+[successor.1707925]      # Linde plc (LIN), 2018
+ciks = [884905]          # Linde Inc, formerly Praxair Inc (the accounting predecessor)
+
+[successor.1841666]      # APA Corp (APA), 2021
+ciks = [6769]            # Apache Corp
+
+[successor.1730168]      # Broadcom Inc. (AVGO), 2018
+ciks = [1649338, 1441634]  # Broadcom Ltd (2016-2018), Avago Technologies Ltd
+
+[successor.2012383]      # BlackRock, Inc. (BLK), 2024
+ciks = [1364742]         # BlackRock Finance, Inc., formerly BlackRock, Inc.
+
+[successor.1996862]      # Bunge Global SA (BG), 2023
+ciks = [1144519]         # Bunge Ltd
+
+[successor.1551182]      # Eaton Corp plc (ETN), 2012
+ciks = [31277]           # Eaton Corp
+
+[successor.1571949]      # Intercontinental Exchange, Inc. (ICE), 2013
+ciks = [1174746]         # Intercontinental Exchange Holdings, formerly IntercontinentalExchange Inc
+
+[successor.1835632]      # Marvell Technology, Inc. (MRVL), 2021
+ciks = [1058057]         # Marvell Technology Group Ltd
+
+[successor.1757898]      # STERIS plc, Ireland (STE), 2019
+ciks = [1624899, 815065]   # STERIS plc, UK (2015-2019), STERIS Corp
+
+[successor.1811074]      # Texas Pacific Land Corp (TPL), 2021
+ciks = [97517]           # Texas Pacific Land Trust
+
+[successor.1858681]      # Apollo Global Management, Inc. (APO), 2022
+ciks = [1411494]         # Apollo Asset Management, formerly Apollo Global Management
+
+# Not mapped, on purpose. Earlier history comes from a merger of two companies or
+# from a foreign filer without US-GAAP XBRL data, so there is no single
+# predecessor to join: AMCR, BKR, CRH, DD, EVRG, FERG, NXPI, SKYD, SW, TKO, VTRS.
