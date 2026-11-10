@@ -45,18 +45,8 @@ def _json_safe(value):
     return value
 
 
-def run(conn: sqlite3.Connection, universe: str) -> dict:
-    started = time.time()
-    history, sources = build_history(
-        conn, universe, progress=lambda n, total: log.info("history: %d of %d companies", n, total))
-    if history.empty:
-        raise RuntimeError("no filed fundamentals in the cache; run `screener refresh` first")
-    px = PriceData.load(conn)
-    members = load_members(conn, universe)
-    as_of = px.adj.index[-1]
-    caps = pd.read_sql_query("SELECT ticker, market_cap FROM company_profile", conn).set_index("ticker")["market_cap"]
-    snap = cross_section(members, history, px, as_of, market_caps=caps.dropna())
-
+def store(conn: sqlite3.Connection, history: pd.DataFrame, snap: pd.DataFrame, sources: dict) -> None:
+    """Write the analysis tables (replacing what was there)."""
     latest_two = history.sort_values("period_end").groupby("cik").tail(2)
     previous = {cik: rows.iloc[0].to_dict() for cik, rows in latest_two.groupby("cik") if len(rows) == 2}
     insight_rows = []
@@ -76,6 +66,21 @@ def run(conn: sqlite3.Connection, universe: str) -> dict:
     conn.executemany("INSERT INTO statement_sources VALUES(?,?)",
                      [(int(cik), json.dumps({k: _json_safe(v) if not isinstance(v, dict) else v
                                              for k, v in src.items()})) for cik, src in sources.items()])
+
+
+def run(conn: sqlite3.Connection, universe: str) -> dict:
+    started = time.time()
+    history, sources = build_history(
+        conn, universe, progress=lambda n, total: log.info("history: %d of %d companies", n, total))
+    if history.empty:
+        raise RuntimeError("no filed fundamentals in the cache; run `screener refresh` first")
+    px = PriceData.load(conn)
+    members = load_members(conn, universe)
+    as_of = px.adj.index[-1]
+    caps = pd.read_sql_query("SELECT ticker, market_cap FROM company_profile", conn).set_index("ticker")["market_cap"]
+    snap = cross_section(members, history, px, as_of, market_caps=caps.dropna())
+
+    store(conn, history, snap, sources)
     summary = {"as_of": as_of, "computed_at": db.now_utc(), "companies": int(history["cik"].nunique()),
                "history_rows": len(history), "snapshot_rows": len(snap),
                "seconds": round(time.time() - started, 1)}

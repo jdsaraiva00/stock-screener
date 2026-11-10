@@ -3,16 +3,18 @@
 A personal screener for US stocks: price behaviour, fundamentals, research-backed
 scores and an honest backtest, on free data, running locally.
 
-**Status: milestone 2 of 6 — data layer, scores and factors.** There is no
-dashboard yet; everything is driven from the command line. See [CHANGELOG.md](CHANGELOG.md).
+**Status: milestone 3 of 6 — data layer, scores, and the screener view.**
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## Setup
 
 Requires [uv](https://docs.astral.sh/uv/) (it installs and pins Python 3.13 for this project).
 
 ```sh
-uv sync                               # install dependencies
+uv sync                               # install Python dependencies
 cp config.example.toml config.toml    # then edit config.toml
+npm --prefix frontend install         # once: frontend dependencies (needs Node 20+)
+npm --prefix frontend run build       # build the web app into src/screener/web
 ```
 
 In `config.toml`, set `[edgar] user_agent` to your name and email, for example
@@ -23,7 +25,8 @@ themselves; the EDGAR refresh refuses to run while the field is empty.
 ## Run
 
 ```sh
-uv run screener refresh               # update the cache (first run: about 20-40 minutes)
+uv run screener serve                 # start the app and open it in the browser
+uv run screener refresh               # update the cache (first run: about 40 minutes)
 uv run screener compute               # recompute scores from the cache (refresh does this at the end)
 uv run screener status                # what is cached, how fresh, what is failing
 uv run screener status --failures     # list every failing ticker with its error
@@ -42,6 +45,13 @@ Refresh options:
 A refresh is safe to interrupt and rerun: each ticker is committed on its own,
 anything refreshed within the windows in `[refresh] max_age_hours` is skipped,
 and a ticker that fails is logged and skipped. The log is `data/logs/refresh.log`.
+
+The app listens on 127.0.0.1 only, on any free port unless `[server] port` is set
+in `config.toml` or `--port` is given. It reads the cache and never calls a data
+source; run `refresh` in another terminal to update it, then reload the page.
+
+When changing the frontend, run `uv run screener serve --port 8765 --no-browser`
+and `npm --prefix frontend run dev` side by side; the dev server proxies `/api`.
 
 ## Data sources
 
@@ -78,7 +88,9 @@ src/screener/
     insights.py      rule-based observations
     compute.py       writes the analysis tables
   checks.py          EDGAR vs Yahoo cross-check
+  server.py          FastAPI app: JSON API over the cache, serves the built frontend
   cli.py
+frontend/            React + TypeScript (Vite); builds into src/screener/web
 ```
 
 Rules the code follows:

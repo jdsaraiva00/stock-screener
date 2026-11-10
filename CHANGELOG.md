@@ -1,5 +1,19 @@
 # Changelog
 
+## Milestone 3 — screener view (2026-11-10)
+
+- `screener serve`: local web app (FastAPI) on 127.0.0.1, any free port, serving
+  the built React frontend and a JSON API that reads only the cache.
+- Screener: filter builder over every measure (by value, or by rank in the
+  universe or sector), sector and text filters, sortable table with selectable
+  columns, adjustable composite weights, saved screens, CSV export.
+- One colour scale throughout: blue favourable, red unfavourable (safe for
+  red-green colour blindness); light and dark themes.
+- Each measure has an info button with what it measures and its source.
+- Data freshness shown in the top bar, with failing tickers listed.
+- Altman Z and Beneish M show "n/a" for financial companies; missing values show a dash.
+- Saved screens live in `data/user.sqlite`, separate from the rebuildable cache.
+
 ## Milestone 2 — scores and factors (2026-11-10)
 
 - Formulas, each checked against its paper and tested against hand-worked values

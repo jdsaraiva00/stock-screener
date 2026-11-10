@@ -238,6 +238,28 @@ def cmd_crosscheck(cfg, args) -> int:
     return 0
 
 
+def cmd_serve(cfg, args) -> int:
+    import socket
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    from screener.server import create_app
+
+    port = args.port if args.port is not None else cfg.server_port
+    if not port:                       # ask the system for any free port
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+    url = f"http://127.0.0.1:{port}"
+    print(f"Stock screener running at {url}  (Ctrl+C to stop)")
+    if not args.no_browser:
+        threading.Timer(1.0, webbrowser.open, args=(url,)).start()
+    uvicorn.run(create_app(cfg), host="127.0.0.1", port=port, log_level="warning")
+    return 0
+
+
 def cmd_coverage(cfg, args) -> int:
     from screener.checks import concept_gaps, short_histories
     from screener.concepts import predecessors
@@ -276,6 +298,11 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("compute", help="recompute scores and ranks from the cache (no download)")
     p.set_defaults(fn=cmd_compute)
+
+    p = sub.add_parser("serve", help="start the web app and open it in the browser")
+    p.add_argument("--port", type=int, help="port to listen on (default: config, or any free port)")
+    p.add_argument("--no-browser", action="store_true")
+    p.set_defaults(fn=cmd_serve)
 
     p = sub.add_parser("status", help="show what is cached and how fresh it is")
     p.add_argument("--failures", action="store_true", help="list every failing key")

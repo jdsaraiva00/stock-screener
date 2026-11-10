@@ -37,3 +37,6 @@ price_batch_size = 50
 [refresh]
 # A key refreshed successfully within this many hours is skipped unless --force.
 max_age_hours = { universe = 24, prices = 12, profile = 24, statements = 168, fundamentals = 24, factors = 168 }
+
+[server]
+port = 0                       # 0 picks any free port each start; set a number to keep it fixed

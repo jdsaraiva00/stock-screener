@@ -35,6 +35,7 @@ class Config:
     yahoo_rps: float = 2.0
     yahoo_price_batch: int = 50
     max_age_hours: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_MAX_AGE_HOURS))
+    server_port: int = 0          # 0 = pick any free port
 
     @property
     def data_dir(self) -> Path:
@@ -43,6 +44,12 @@ class Config:
     @property
     def db_path(self) -> Path:
         return self.data_dir / "cache.sqlite"
+
+    @property
+    def user_db_path(self) -> Path:
+        """Things you create in the app (saved screens). Kept apart from the cache,
+        which can be deleted and rebuilt."""
+        return self.data_dir / "user.sqlite"
 
     @property
     def raw_dir(self) -> Path:
@@ -99,5 +106,6 @@ def load_config(path: Path | None = None) -> Config:
     yahoo = raw.get("yahoo", {})
     cfg.yahoo_rps = float(yahoo.get("requests_per_second", cfg.yahoo_rps))
     cfg.yahoo_price_batch = int(yahoo.get("price_batch_size", cfg.yahoo_price_batch))
+    cfg.server_port = int(raw.get("server", {}).get("port", 0))
     cfg.max_age_hours.update(raw.get("refresh", {}).get("max_age_hours", {}))
     return cfg

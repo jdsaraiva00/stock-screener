@@ -7,3 +7,6 @@ config.toml
 data/
 node_modules/
 dist/
+
+# built frontend (rebuild with: npm --prefix frontend run build)
+src/screener/web/
