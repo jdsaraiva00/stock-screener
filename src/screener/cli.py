@@ -72,6 +72,22 @@ def cmd_refresh(cfg, args) -> int:
     failed = sum(r.failed for r in results.values())
     if failed:
         print(f"\n{failed} failure(s). Run `screener status --failures` to list them.")
+    if not args.no_compute:
+        from screener.analysis import compute
+
+        summary = compute.run(conn, cfg.universe)
+        print(f"Scores recomputed as of {summary['as_of']} ({summary['seconds']}s).")
+    return 0
+
+
+def cmd_compute(cfg, args) -> int:
+    from screener.analysis import compute
+
+    _setup_logging(cfg)
+    conn = db.connect(cfg.db_path)
+    summary = compute.run(conn, cfg.universe)
+    print(f"Scores computed for {summary['snapshot_rows']} tickers as of {summary['as_of']} "
+          f"({summary['history_rows']:,} company-years, {summary['seconds']}s).")
     return 0
 
 
@@ -255,7 +271,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--only", help="comma-separated steps: universe,factors,fundamentals,prices,profile,statements")
     p.add_argument("--tickers", help="comma-separated tickers to limit the run to")
     p.add_argument("--force", action="store_true", help="ignore freshness and reload")
+    p.add_argument("--no-compute", action="store_true", help="do not recompute scores afterwards")
     p.set_defaults(fn=cmd_refresh)
+
+    p = sub.add_parser("compute", help="recompute scores and ranks from the cache (no download)")
+    p.set_defaults(fn=cmd_compute)
 
     p = sub.add_parser("status", help="show what is cached and how fresh it is")
     p.add_argument("--failures", action="store_true", help="list every failing key")

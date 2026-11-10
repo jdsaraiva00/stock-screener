@@ -68,7 +68,7 @@ def test_tag_change_keeps_original_filing_date(apple):
 
 
 def test_unmapped_or_absent_concept_is_empty_not_zero(apple):
-    assert annual_series(apple, APPLE_CIK, "inventory").empty
+    assert annual_series(apple, APPLE_CIK, "redeemable_minority").empty   # Apple reports none
     assert annual_series(apple, 999, "net_income").empty
     with pytest.raises(ValueError):
         quarterly_series(apple, APPLE_CIK, "total_assets")

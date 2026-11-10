@@ -3,7 +3,7 @@
 A personal screener for US stocks: price behaviour, fundamentals, research-backed
 scores and an honest backtest, on free data, running locally.
 
-**Status: milestone 1 of 6 — the data layer and local cache.** There is no
+**Status: milestone 2 of 6 — data layer, scores and factors.** There is no
 dashboard yet; everything is driven from the command line. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Setup
@@ -24,6 +24,7 @@ themselves; the EDGAR refresh refuses to run while the field is empty.
 
 ```sh
 uv run screener refresh               # update the cache (first run: about 20-40 minutes)
+uv run screener compute               # recompute scores from the cache (refresh does this at the end)
 uv run screener status                # what is cached, how fresh, what is failing
 uv run screener status --failures     # list every failing ticker with its error
 uv run screener show AAPL             # cached figures for one company, with filing references
@@ -67,7 +68,15 @@ src/screener/
   concepts.py        which XBRL tags supply each financial concept
   reference/cik_predecessors.toml   companies whose history spans two SEC registrants
   fundamentals.py    annual / quarterly series from filed facts, point in time
-  refresh.py         the refresh job (the only writer)
+  refresh.py         the refresh job (the only writer of source data)
+  analysis/
+    statements.py    a company's annual statements as known on a date; derived lines
+    formulas.py      the published formulas as pure functions, with citations
+    prices.py        momentum, returns, volatility, beta, drawdown, trend
+    engine.py        per-year history, the cross-section for a date, ranks, composite
+    catalog.py       every measure: label, direction, format, explanation, source
+    insights.py      rule-based observations
+    compute.py       writes the analysis tables
   checks.py          EDGAR vs Yahoo cross-check
   cli.py
 ```
@@ -110,3 +119,32 @@ Rules the code follows:
 - Factor returns are stored in percent, as published (`value_pct`).
 - Two share classes of one company (GOOGL/GOOG, FOXA/FOX, NWSA/NWS) share one set
   of filed fundamentals.
+
+## Scores and factors
+
+`uv run screener compute` writes three tables: `fundamental_history` (every company
+and fiscal year, computed from what its annual report showed on the filing date),
+`snapshot` (one row per ticker for the latest trading day, with percentile ranks in
+the universe, `__pct`, and in the GICS sector, `__spct`; 100 is most favourable),
+and `insights`.
+
+Formulas follow the papers cited in `analysis/formulas.py`, checked against the
+papers' own text, and are tested against values worked out by hand from Apple's
+fiscal 2026 statements (`tests/test_formulas.py`). Where the data forced a choice:
+
+| Measure | Choice made |
+|---|---|
+| F-Score | "No equity issued" is measured as share count not rising. Shown only when all nine signals can be computed. |
+| Altman Z, Beneish M | Not computed for financial companies (GICS Financials, or SEC industry codes for banks, brokers, insurers). |
+| Beneish M | Total accruals use the cash-flow form (income less operating cash flow). Depreciation includes amortisation. |
+| Accruals | Two measures: Sloan's balance-sheet form, and net income less operating cash flow, which far more companies support. |
+| Quality | Simplified from Asness, Frazzini and Pedersen: growth uses totals, not per-share residual income; Ohlson's O-Score is left out; ROE volatility uses five annual values. |
+| Beta | Frazzini-Pedersen method, with an S&P 500 tracker as the market. |
+| Book equity | Shareholders' equity less preferred stock; deferred taxes are not added. |
+| Market cap | Yahoo's figure for today's screen; share price times filed diluted shares for past dates. |
+| Debt | The sum of the debt lines a company tags. If it tags none, debt is unknown, not zero. |
+| Derived lines | Gross profit, total liabilities, EBIT and a few others are computed when not reported, and flagged. |
+| Basis | Annual figures as published. Trailing-twelve-month figures are not yet computed. |
+
+A score is missing whenever an input is missing. Coverage of the stricter scores
+is therefore partial (see the CHANGELOG for current numbers).

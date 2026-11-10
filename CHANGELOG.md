@@ -1,5 +1,25 @@
 # Changelog
 
+## Milestone 2 — scores and factors (2026-11-10)
+
+- Formulas, each checked against its paper and tested against hand-worked values
+  from Apple's fiscal 2026 statements: Piotroski F-Score, Altman Z, Beneish M,
+  accruals (Sloan and cash-flow forms), gross profitability, asset growth,
+  book-to-market, earnings yield, EBIT/EV, free cash flow yield, quality
+  composite, Frazzini-Pedersen beta, volatility, 12-1 momentum, price measures.
+- Point-in-time history: each fiscal year computed from filings available when
+  its annual report was filed.
+- Percentile ranks within the universe and within the GICS sector; value,
+  low-risk and weighted composite scores.
+- Altman Z and Beneish M marked not applicable for 82 financial tickers.
+- Rule-based insights that cite the measures they rest on.
+- Derived statement lines (gross profit, total liabilities, EBIT, net income
+  less minority share), flagged as derived.
+- `screener compute`; `refresh` now recomputes scores when it finishes.
+- Coverage on the S&P 500 (503 tickers): F-Score 276, Altman Z 372 of 421
+  non-financials, Beneish M 204, gross profitability 318, cash-flow accruals,
+  book-to-market, earnings yield, momentum and quality 500.
+
 ## Milestone 1 — data layer and cache (2026-11-10)
 
 - Project set up with uv on Python 3.13; `screener` command line tool.
