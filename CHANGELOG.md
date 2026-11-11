@@ -1,5 +1,18 @@
 # Changelog
 
+## Milestone 4 — stock detail and market overview (2026-11-11)
+
+- Stock detail: price chart (ranges, with or without dividends), rule-based
+  insights with the numbers they rest on, a card per score with every component,
+  universe and sector percentiles and a strip showing sector peers, multi-year
+  fundamentals as charts and a table, and the XBRL tags and derived lines behind
+  the latest year.
+- Market overview: sector heatmap (median returns and factor ranks), the
+  distribution of any measure across the universe, and the stocks at each extreme.
+- Fix: year-on-year working-capital changes are no longer computed when a company
+  re-tagged its short-term investments between the two years (this had inflated
+  Nvidia's Sloan accruals). Such cases now show as missing.
+
 ## Milestone 3 — screener view (2026-11-10)
 
 - `screener serve`: local web app (FastAPI) on 127.0.0.1, any free port, serving

@@ -83,7 +83,8 @@ _CONCEPTS = [
         "CashCashEquivalentsAndShortTermInvestments",)),
     Concept("short_term_investments", "Short-term investments", "instant", (
         "ShortTermInvestments", "MarketableSecuritiesCurrent",
-        "AvailableForSaleSecuritiesDebtSecuritiesCurrent")),
+        "AvailableForSaleSecuritiesDebtSecuritiesCurrent",
+        "DebtSecuritiesAvailableForSaleExcludingAccruedInterestCurrent")),
     Concept("receivables", "Accounts receivable", "instant", (
         "AccountsReceivableNetCurrent", "ReceivablesNetCurrent")),
     Concept("inventory", "Inventory", "instant", ("InventoryNet",)),

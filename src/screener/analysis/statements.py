@@ -75,7 +75,7 @@ DERIVED_NOTES = {
     "total_liabilities": "total assets minus total equity (and temporary equity)",
     "ebit": "pre-tax income plus interest expense",
     "sga": "general and administrative plus selling and marketing",
-    "cash_and_short_term": "cash plus short-term investments where reported",
+    "cash_and_short_term": "cash plus the short-term investments line where one is tagged",
 }
 
 
@@ -104,7 +104,15 @@ def derive(values: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     v["ebit"] = _col(v, "operating_income")
     fill("ebit", _col(v, "pretax_income") + _col(v, "interest_expense"))
     fill("sga", _col(v, "general_admin") + _col(v, "selling_marketing"))
+    # How "cash and short-term investments" was obtained each year: 0 reported as one
+    # line, 1 cash plus a tagged short-term investments line, 2 cash alone. A company can
+    # hold investments under a tag not mapped here, so year-on-year changes are only
+    # trusted when both years were built the same way (see formulas._wc_change).
+    reported = _col(v, "cash_and_short_term").notna()
+    with_investments = _col(v, "short_term_investments").notna()
     fill("cash_and_short_term", _col(v, "cash") + _col(v, "short_term_investments").fillna(0))
+    v["cash_basis"] = np.where(reported, 0.0, np.where(with_investments, 1.0, 2.0))
+    v.loc[v["cash_and_short_term"].isna(), "cash_basis"] = np.nan
 
     # Debt as presented: the sum of whichever debt lines the company tags.
     # If it tags none at all, debt is unknown (not assumed to be zero).

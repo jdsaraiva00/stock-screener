@@ -3,7 +3,7 @@
 A personal screener for US stocks: price behaviour, fundamentals, research-backed
 scores and an honest backtest, on free data, running locally.
 
-**Status: milestone 3 of 6 — data layer, scores, and the screener view.**
+**Status: milestone 4 of 6 — data layer, scores, screener, stock detail and market overview.**
 See [CHANGELOG.md](CHANGELOG.md).
 
 ## Setup

@@ -123,6 +123,10 @@ def test_accruals_apple_fy2026():
     assert r["accruals_sloan"] == pytest.approx(-0.02615, abs=5e-5)
     assert close(r["accruals_cf"], (132_175 - 145_097) / avg_assets)
     assert r["accruals_cf"] == pytest.approx(-0.03384, abs=5e-5)
+    # If the two years' cash figures were assembled differently, the change is not trusted.
+    regrouped = f.accruals(dict(FY26, cash_basis=2.0), dict(FY25, cash_basis=1.0))
+    assert math.isnan(regrouped["accruals_sloan"]) and not math.isnan(regrouped["accruals_cf"])
+    assert close(f.accruals(dict(FY26, cash_basis=1.0), dict(FY25, cash_basis=1.0))["accruals_sloan"], r["accruals_sloan"])
     no_tax = {k: v for k, v in FY26.items() if k != "taxes_payable"}
     partial = f.accruals(no_tax, FY25)
     assert math.isnan(partial["accruals_sloan"]) and not math.isnan(partial["accruals_cf"])

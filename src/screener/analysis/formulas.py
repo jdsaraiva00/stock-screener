@@ -163,6 +163,16 @@ def _operating_working_capital(lines: Lines | None) -> float:
             + g(lines, "debt_current") + g(lines, "taxes_payable"))
 
 
+def _wc_change(cur: Lines | None, prev: Lines | None) -> float:
+    """Change in operating working capital. Missing if the two years' cash and
+    short-term investments were assembled differently (e.g. a company re-tagged
+    its investments), because the difference would then be an artefact."""
+    a, b = g(cur, "cash_basis"), g(prev, "cash_basis")
+    if not math.isnan(a) and not math.isnan(b) and a != b:
+        return NAN
+    return _operating_working_capital(cur) - _operating_working_capital(prev)
+
+
 def accruals(cur: Lines, prev: Lines | None) -> dict:
     """Two accrual measures, both scaled by average total assets. Lower is better.
 
@@ -172,7 +182,7 @@ def accruals(cur: Lines, prev: Lines | None) -> dict:
     accruals_cf: net income minus operating cash flow, the cash-flow-statement
       form (Hribar and Collins, 2002), available for far more companies."""
     avg_assets = (g(cur, "total_assets") + g(prev, "total_assets")) / 2
-    d_wc = _operating_working_capital(cur) - _operating_working_capital(prev)
+    d_wc = _wc_change(cur, prev)
     sloan = div(d_wc - g(cur, "depreciation_amortization"), avg_assets)
     cash_flow = div(g(cur, "net_income") - g(cur, "cfo"), avg_assets)
     return {"accruals_sloan": sloan, "accruals_cf": cash_flow}
@@ -210,7 +220,7 @@ def quality_inputs(cur: Lines, prev: Lines | None, y5: Lines | None, y6: Lines |
     paper's fallback when quarterly data is unavailable). Beta and Altman Z are
     added by the caller; Ohlson's O-Score is not included."""
     def cash_flow(now: Lines | None, before: Lines | None) -> float:
-        d_wc = _operating_working_capital(now) - _operating_working_capital(before)
+        d_wc = _wc_change(now, before)
         return g(now, "net_income") + g(now, "depreciation_amortization") - d_wc - g(now, "capex")
 
     def plus_if_reported(lines: Lines | None, name: str) -> float:
@@ -219,7 +229,7 @@ def quality_inputs(cur: Lines, prev: Lines | None, y5: Lines | None, y6: Lines |
 
     ta, be = g(cur, "total_assets"), book_equity(cur)
     gp, ni = g(cur, "gross_profit"), g(cur, "net_income")
-    d_wc = _operating_working_capital(cur) - _operating_working_capital(prev)
+    d_wc = _wc_change(cur, prev)
     cf = cash_flow(cur, prev)
     ta5, be5 = g(y5, "total_assets"), book_equity(y5)
     evol = NAN
