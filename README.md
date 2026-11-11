@@ -3,8 +3,10 @@
 A personal screener for US stocks: price behaviour, fundamentals, research-backed
 scores and an honest backtest, on free data, running locally.
 
-**Status: milestone 5 of 6 — all four views work: screener, stock detail, market overview, backtest.**
-See [CHANGELOG.md](CHANGELOG.md).
+**Status: all six milestones are built** — screener, stock detail, market
+overview and backtest, on a local cache of free data. Packaging as a desktop app
+is proposed in [docs/packaging-proposal.md](docs/packaging-proposal.md) and not
+yet built. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Setup
 
@@ -47,8 +49,9 @@ anything refreshed within the windows in `[refresh] max_age_hours` is skipped,
 and a ticker that fails is logged and skipped. The log is `data/logs/refresh.log`.
 
 The app listens on 127.0.0.1 only, on any free port unless `[server] port` is set
-in `config.toml` or `--port` is given. It reads the cache and never calls a data
-source; run `refresh` in another terminal to update it, then reload the page.
+in `config.toml` or `--port` is given. Pages read only the cache. To update it,
+use "Update data now" in the freshness panel (top right), or run `refresh` in a
+terminal; both fetch only what is out of date and then recompute scores.
 
 When changing the frontend, run `uv run screener serve --port 8765 --no-browser`
 and `npm --prefix frontend run dev` side by side; the dev server proxies `/api`.

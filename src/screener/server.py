@@ -6,8 +6,10 @@ Every endpoint reads from SQLite only. Nothing here calls a data source.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import sqlite3
+import threading
 from pathlib import Path
 
 import pandas as pd
@@ -72,8 +74,63 @@ def freshness(conn: sqlite3.Connection) -> list[dict]:
     return rows
 
 
-def create_app(cfg: Config) -> FastAPI:
+def default_refresh_job(cfg: Config) -> str:
+    """Update the cache from the data sources, then recompute scores. Runs in a
+    background thread of the app; the pages keep reading the cache meanwhile."""
+    from screener.analysis import compute
+    from screener.refresh import STEPS, Refresher
+
+    cfg.log_dir.mkdir(parents=True, exist_ok=True)
+    root = logging.getLogger("screener")
+    if not any(isinstance(h, logging.FileHandler) for h in root.handlers):
+        handler = logging.FileHandler(cfg.log_dir / "refresh.log")
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S"))
+        root.addHandler(handler)
+        root.setLevel(logging.INFO)
+    conn = db.connect(cfg.db_path)
+    try:
+        results = Refresher(cfg, conn).run(STEPS)
+        compute.run(conn, cfg.universe)
+    finally:
+        conn.close()
+    failed = sum(r.failed for r in results.values())
+    updated = sum(r.ok for r in results.values())
+    return f"{updated} series updated, {failed} failed"
+
+
+def create_app(cfg: Config, refresh_job=default_refresh_job) -> FastAPI:
     app = FastAPI(title="Stock screener", docs_url="/api/docs", openapi_url="/api/openapi.json")
+    refresh_state = {"running": False, "started_at": None, "finished_at": None, "result": None, "error": None}
+    refresh_lock = threading.Lock()
+
+    def run_refresh() -> None:
+        try:
+            refresh_state["result"] = refresh_job(cfg)
+        except Exception as exc:  # shown to the user in the freshness panel
+            refresh_state["error"] = f"{type(exc).__name__}: {exc}"
+        finally:
+            refresh_state["finished_at"] = db.now_utc()
+            refresh_state["running"] = False
+
+    @app.post("/api/refresh")
+    def start_refresh():
+        with refresh_lock:
+            if refresh_state["running"]:
+                raise HTTPException(409, "A refresh is already running")
+            refresh_state.update(running=True, started_at=db.now_utc(), finished_at=None, result=None, error=None)
+        threading.Thread(target=run_refresh, daemon=True).start()
+        return dict(refresh_state)
+
+    @app.get("/api/refresh")
+    def refresh_status():
+        log_file = cfg.log_dir / "refresh.log"
+        tail = []
+        if log_file.exists():
+            with open(log_file, "rb") as fh:
+                fh.seek(0, 2)
+                fh.seek(max(0, fh.tell() - 4000))
+                tail = fh.read().decode("utf-8", "replace").splitlines()[-8:]
+        return {**refresh_state, "log": tail}
 
     def cache() -> sqlite3.Connection:
         if not cfg.db_path.exists():

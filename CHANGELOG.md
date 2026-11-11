@@ -1,5 +1,18 @@
 # Changelog
 
+## Milestone 6 — polish and packaging proposal (2026-11-11)
+
+- "Update data now" in the freshness panel: runs the incremental refresh and the
+  score computation in the background while the app stays usable, with live
+  progress; one update at a time.
+- The freshness indicator turns red when prices are more than four days old or
+  any ticker is failing.
+- The screen being worked on (filters, columns, weights, sort) survives a page reload.
+- Charts show their whole range (the price chart's "All" and the backtest curve
+  previously stopped at about nine years).
+- `python -m screener` works as well as the `screener` command.
+- Packaging proposal: `docs/packaging-proposal.md`.
+
 ## Milestone 5 — backtest (2026-11-11)
 
 - Backtest engine: equal-weighted top N by composite, monthly or quarterly,

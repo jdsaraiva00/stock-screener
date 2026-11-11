@@ -92,6 +92,42 @@ def test_backtest_endpoint(client):
     assert too_many.status_code == 422 and "twice" in too_many.json()["detail"]
 
 
+def test_refresh_runs_in_the_background_one_at_a_time(cfg):
+    import threading
+    import time
+
+    release, calls = threading.Event(), []
+
+    def job(config):
+        calls.append(config)
+        release.wait(5)
+        return "3 series updated, 0 failed"
+
+    client = TestClient(create_app(cfg, refresh_job=job))
+    assert client.get("/api/refresh").json()["running"] is False
+    assert client.post("/api/refresh").json()["running"] is True
+    assert client.post("/api/refresh").status_code == 409            # never two at once
+    release.set()
+    for _ in range(100):
+        status = client.get("/api/refresh").json()
+        if not status["running"]:
+            break
+        time.sleep(0.02)
+    assert status["result"] == "3 series updated, 0 failed" and status["error"] is None and len(calls) == 1
+
+    def broken(config):
+        raise RuntimeError("source unreachable")
+
+    client = TestClient(create_app(cfg, refresh_job=broken))
+    client.post("/api/refresh")
+    for _ in range(100):
+        status = client.get("/api/refresh").json()
+        if not status["running"]:
+            break
+        time.sleep(0.02)
+    assert status["error"] == "RuntimeError: source unreachable"
+
+
 def test_empty_cache_gives_a_clear_error(cfg):
     response = TestClient(create_app(cfg)).get("/api/screen")
     assert response.status_code == 503 and "refresh" in response.json()["detail"]

@@ -83,7 +83,14 @@ const json = (method: string, body: unknown): RequestInit => ({
   method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
 });
 
+export interface RefreshStatus {
+  running: boolean; started_at: string | null; finished_at: string | null;
+  result: string | null; error: string | null; log?: string[];
+}
+
 export const api = {
+  refreshStatus: () => call<RefreshStatus>("/api/refresh"),
+  startRefresh: () => call<RefreshStatus>("/api/refresh", { method: "POST" }),
   meta: () => call<Meta>("/api/meta"),
   screen: async () => toRows(await call<Split>("/api/screen")),
   stock: (ticker: string) => call<StockDetail>(`/api/stock/${encodeURIComponent(ticker)}`),
