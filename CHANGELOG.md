@@ -1,5 +1,20 @@
 # Changelog
 
+## Milestone 5 — backtest (2026-11-11)
+
+- Backtest engine: equal-weighted top N by composite, monthly or quarterly,
+  trades the day after the signal, transaction cost setting, holdings drift
+  between rebalances. Uses the screener's own cross-section code on each date,
+  with fundamentals available only from their SEC filing date.
+- Results: growth chart against the S&P 500 total return index and against all
+  current members equal-weighted; CAGR, volatility, Sharpe, maximum drawdown,
+  turnover; regressions on Fama-French 3 and 5 factors with and without momentum;
+  holdings at every rebalance.
+- Survivorship bias, actual date coverage and the McLean-Pontiff caveat are shown
+  on the page next to the results.
+- A backtest starts only when every weighted measure exists for at least 2N stocks.
+- First run about 5 s (quarterly) to 11 s (monthly); later runs under a second.
+
 ## Milestone 4 — stock detail and market overview (2026-11-11)
 
 - Stock detail: price chart (ranges, with or without dividends), rule-based

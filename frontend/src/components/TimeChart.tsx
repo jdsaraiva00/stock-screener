@@ -39,7 +39,7 @@ export function TimeChart({ dates, lines, from, format, log, height = 320 }: {
       layout: { background: { type: ColorType.Solid, color: cssVar("--surface") }, textColor: cssVar("--text-2"), attributionLogo: false, fontSize: 11 },
       grid: { vertLines: { visible: false }, horzLines: { color: cssVar("--border") } },
       rightPriceScale: { borderVisible: false, mode: log ? 1 : 0 },
-      timeScale: { borderVisible: false },
+      timeScale: { borderVisible: false, minBarSpacing: 0.001, fixLeftEdge: true, fixRightEdge: true },
       crosshair: { horzLine: { visible: false, labelVisible: false } },
       localization: { priceFormatter: format, locale: "en-US" },
       handleScroll: false, handleScale: false,

@@ -40,8 +40,13 @@ class PriceData:
     def split_factor_after(self, ticker: str, date: str) -> float:
         """Product of split ratios dated after `date`: converts a share count stated
         on `date` into today's share units, which is what the adjusted close is quoted in."""
-        rows = self.splits[(self.splits["ticker"] == ticker) & (self.splits["date"] > date)]
-        return float(rows["split"].prod()) if len(rows) else 1.0
+        if not hasattr(self, "_split_index"):
+            self._split_index = {t: list(zip(g["date"], g["split"])) for t, g in self.splits.groupby("ticker")}
+        factor = 1.0
+        for when, ratio in self._split_index.get(ticker, ()):
+            if when > date:
+                factor *= ratio
+        return factor
 
 
 def frazzini_pedersen_beta(log_returns: np.ndarray, market: np.ndarray) -> np.ndarray:

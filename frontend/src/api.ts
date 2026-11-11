@@ -35,7 +35,7 @@ export interface SavedScreen { name: string; definition: unknown; updated_at: st
 
 export interface BacktestConfig {
   weights: Record<string, number>;
-  filters: unknown[];
+  filters: { key: string; basis: string; lo: number | null; hi: number | null }[];
   sectors: string[];
   exclude_financials: boolean;
   top_n: number;
@@ -46,11 +46,15 @@ export interface BacktestConfig {
 }
 export interface BacktestResult {
   config: BacktestConfig;
-  coverage: { first_rebalance: string; last_date: string; rebalances: number; factor_data_through: string | null };
-  curve: { dates: string[]; portfolio: number[]; benchmark: number[] };
-  stats: Record<string, Record<string, number | null>>;
+  coverage: {
+    first_rebalance: string; first_day: string; last_date: string; rebalances: number;
+    factor_data_through: string | null; benchmark: string | null;
+  };
+  curve: { dates: string[]; portfolio: number[]; universe: number[]; benchmark: number[] | null };
+  stats: Record<"portfolio" | "universe" | "benchmark", Record<string, number | null> | undefined>;
   regression: {
-    model: string; months: number; r_squared: number | null;
+    model: string; months: number; r_squared: number | null; alpha_annual_pct: number | null;
+    first_month: string; last_month: string;
     terms: { name: string; coef: number | null; t: number | null }[];
   }[];
   holdings: { date: string; tickers: string[]; scores: (number | null)[]; turnover: number | null; eligible: number }[];

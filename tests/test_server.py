@@ -23,6 +23,15 @@ def client(cfg, conn):
     snap = engine.cross_section(members, history, px, px.adj.index[-1])
     compute.store(conn, history, snap, {1: {"period_end": "2023-06-30", "available": "2023-08-15",
                                             "derived": {}, "tags": {"revenue": "Revenues"}}})
+    long = px.adj.stack().reset_index()
+    long.columns = ["date", "ticker", "adj_close"]
+    conn.executemany("INSERT INTO prices_daily(ticker, date, close, adj_close) VALUES(?,?,?,?)",
+                     [(r.ticker, r.date, r.adj_close, r.adj_close) for r in long.itertuples()])
+    conn.executemany("INSERT INTO universe_membership(universe,ticker,cik,name,gics_sector,first_seen,source,fetched_at) "
+                     "VALUES('sp500',?,?,?,?,'2020-01-01','test','2020-01-01')",
+                     [(m.ticker, m.cik, m.name, m.sector) for m in members.itertuples()])
+    conn.executemany("INSERT INTO filer_info(cik, sic, source, fetched_at) VALUES(?,?,'test','2020-01-01')",
+                     [(m.cik, m.sic) for m in members.itertuples()])
     conn.execute("INSERT INTO analysis_meta VALUES('as_of', ?)", (px.adj.index[-1],))
     conn.execute("INSERT INTO refresh_log VALUES('prices','BAD','2026-01-01T00:00:00Z',NULL,'error','no data',NULL)")
     conn.commit()
@@ -68,6 +77,19 @@ def test_saved_screens_round_trip(client):
     assert client.put("/api/screens/%20", json={}).status_code == 422
     assert client.delete("/api/screens/Strong%20balance%20sheets").status_code == 200
     assert client.delete("/api/screens/Strong%20balance%20sheets").status_code == 404
+
+
+def test_backtest_endpoint(client):
+    body = {"weights": {"gross_profitability": 1}, "top_n": 3, "rebalance": "monthly", "cost_bps": 0,
+            "filters": [], "sectors": [], "exclude_financials": False, "start": None, "end": None}
+    response = client.post("/api/backtest", json=body)
+    assert response.status_code == 200 and "NaN" not in response.text
+    result = response.json()
+    assert result["holdings"][0]["tickers"] == ["T11", "T10", "T9"]
+    assert result["stats"]["portfolio"]["sharpe"] is None        # no risk-free data in this cache: null
+    assert len(result["notes"]) >= 2
+    too_many = client.post("/api/backtest", json={**body, "top_n": 50})
+    assert too_many.status_code == 422 and "twice" in too_many.json()["detail"]
 
 
 def test_empty_cache_gives_a_clear_error(cfg):

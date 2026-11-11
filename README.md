@@ -3,7 +3,7 @@
 A personal screener for US stocks: price behaviour, fundamentals, research-backed
 scores and an honest backtest, on free data, running locally.
 
-**Status: milestone 4 of 6 — data layer, scores, screener, stock detail and market overview.**
+**Status: milestone 5 of 6 — all four views work: screener, stock detail, market overview, backtest.**
 See [CHANGELOG.md](CHANGELOG.md).
 
 ## Setup
@@ -87,6 +87,7 @@ src/screener/
     catalog.py       every measure: label, direction, format, explanation, source
     insights.py      rule-based observations
     compute.py       writes the analysis tables
+    backtest.py      top-N portfolio simulation, statistics, factor regressions
   checks.py          EDGAR vs Yahoo cross-check
   server.py          FastAPI app: JSON API over the cache, serves the built frontend
   cli.py
@@ -160,3 +161,31 @@ fiscal 2026 statements (`tests/test_formulas.py`). Where the data forced a choic
 
 A score is missing whenever an input is missing. Coverage of the stricter scores
 is therefore partial (see the CHANGELOG for current numbers).
+
+## Backtest
+
+The backtest takes the screen as it stands in the screener (composite weights,
+filters, sectors) and, on the last trading day of each month or quarter:
+
+1. rebuilds the cross-section from annual reports already filed by that date and
+   prices up to that date (the same code path as the screener);
+2. ranks the stocks passing the filters by the composite and takes the top N;
+3. trades at the next trading day's close, in equal weights, and lets holdings
+   drift until the next rebalance;
+4. charges the cost setting on every dollar bought and sold.
+
+It starts on the first date when every weighted measure exists for at least 2N
+eligible stocks, so a screen using fundamentals cannot quietly run on prices alone.
+
+Limits that the page states next to every result:
+
+- **Survivorship bias.** The universe is today's index members. The page plots
+  "all current members, equal-weighted" so the size of the bias is visible; with
+  the current cache that line returns about 18% a year from 2010 against about
+  14% for the S&P 500 itself.
+- **Coverage.** Filed fundamentals begin around 2009-2011.
+- **Publication decay.** McLean and Pontiff (2016).
+- Market cap for past dates is price times filed diluted shares, which is wrong
+  for a few companies (unusual share-count reporting, multiple share classes).
+- Sharpe ratios and factor regressions stop at the last date in the Ken French
+  library, which lags by one to two months.
