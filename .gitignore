@@ -10,3 +10,6 @@ dist/
 
 # built frontend (rebuild with: npm --prefix frontend run build)
 src/screener/web/
+
+# personal explainer document (LaTeX source and PDF), not for the repository
+docs/explainer/
