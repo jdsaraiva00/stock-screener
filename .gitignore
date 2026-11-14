@@ -13,3 +13,6 @@ src/screener/web/
 
 # personal explainer document (LaTeX source and PDF), not for the repository
 docs/explainer/
+
+# macOS Finder metadata
+.DS_Store
