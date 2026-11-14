@@ -20,7 +20,7 @@ export function CustomMeasuresMenu({ shared }: { shared: Shared }) {
 
   const load = () => api.measures().then(setMine).catch(() => setMine([]));
   useEffect(() => { load(); }, []);
-  const lines = meta.catalog.lines;
+  const lines = meta.catalog.lines ?? [];      // absent when the server predates custom measures
   const builtIn = meta.catalog.measures.filter((m) => m.group !== "Custom" && m.fmt !== "flag" && m.key !== "composite");
 
   const save = async () => {
