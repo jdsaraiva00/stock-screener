@@ -22,10 +22,13 @@ from screener.analysis.catalog import BY_KEY, DEFAULT_WEIGHTS, NOT_FOR_FINANCIAL
 from screener.analysis.prices import PriceData, price_measures
 from screener.analysis.statements import DERIVED_NOTES, annual_view, derive, load_facts, report_dates
 
-KEEP_LINES = ["revenue", "gross_profit", "ebit", "net_income", "cfo", "capex", "free_cash_flow",
-              "total_assets", "total_liabilities", "equity", "total_debt", "cash_and_short_term",
-              "current_assets", "current_liabilities", "retained_earnings", "working_capital",
-              "shares", "minority_interest", "preferred_stock", "eps_diluted", "dividends_paid"]
+KEEP_LINES = ["revenue", "gross_profit", "ebit", "pretax_income", "income_tax", "net_income",
+              "interest_expense", "depreciation_amortization", "sga", "rd",
+              "cfo", "capex", "free_cash_flow", "dividends_paid",
+              "total_assets", "current_assets", "cash", "cash_and_short_term", "receivables", "inventory",
+              "ppe_net", "total_liabilities", "current_liabilities", "total_debt", "debt_current",
+              "debt_noncurrent", "working_capital", "equity", "retained_earnings", "minority_interest",
+              "preferred_stock", "shares", "eps_diluted"]
 STALE_AFTER_DAYS = 550        # a fiscal year older than this is not used as "latest"
 MIN_SECTOR_SIZE = 5
 

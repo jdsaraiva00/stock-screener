@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from screener.analysis import engine
+from screener.analysis import custom, engine
 from screener.analysis.catalog import DEFAULT_WEIGHTS, MEASURES
 from screener.analysis.prices import PriceData
 
@@ -49,6 +49,7 @@ class BacktestConfig:
     start: str | None = None
     end: str | None = None
     cost_bps: float = 10.0                                 # per dollar traded, each way
+    custom: list[dict] = field(default_factory=list)       # user-defined measures: {key, label, formula, better, fmt}
 
 
 @dataclass
@@ -200,7 +201,9 @@ class Backtester:
         self.members, self.history, self.px, self.factors = members, history, px, factors
         self._sections: dict[str, pd.DataFrame] = {}
         keys = [m.key for m in MEASURES if m.key != "composite"]
-        self._keep = ["sector", "financial", "price"] + [c for k in keys for c in (k, f"{k}__pct", f"{k}__spct")]
+        # Statement lines are kept too, so user-defined formulas can be evaluated on each date.
+        keep = ["sector", "financial", "price", *custom.LINES] + [c for k in keys for c in (k, f"{k}__pct", f"{k}__spct")]
+        self._keep = list(dict.fromkeys(keep))
 
     def section(self, date: str) -> pd.DataFrame:
         if date not in self._sections:
@@ -212,6 +215,11 @@ class Backtester:
         """Tickers chosen on `date`, their composite scores, how many were eligible,
         and the smallest number of eligible stocks that have any one weighted measure."""
         frame = self.section(date)
+        # Custom measures the screen refers to, computed and ranked on this date's cross-section.
+        wanted = {k for k, w in cfg.weights.items() if w > 0} | {f["key"] for f in cfg.filters}
+        needed = [custom.CustomMeasure(**m) for m in cfg.custom if m["key"] in wanted]
+        if needed:
+            frame = custom.apply(frame, needed)
         frame = frame[frame["price"].notna()]
         if cfg.sectors:
             frame = frame[frame["sector"].isin(cfg.sectors)]

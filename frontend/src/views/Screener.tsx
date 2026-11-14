@@ -8,6 +8,7 @@ import {
   applyScreen, defaultScreen, download, sortRows, toCsv, withComposite,
   type Basis, type Filter, type Op, type ScreenDef,
 } from "../screen";
+import { CustomMeasuresMenu } from "./CustomMeasures";
 
 /** A button that opens a small panel below it and closes on outside click or Escape. */
 export function Menu({ label, children, wide }: { label: ReactNode; children: ReactNode; wide?: boolean }) {
@@ -53,12 +54,12 @@ function FilterRow({ filter, measures, byKey, onChange, onRemove }: {
   filter: Filter; measures: Measure[]; byKey: Record<string, Measure>;
   onChange: (f: Filter) => void; onRemove: () => void;
 }) {
-  const m = byKey[filter.key];
-  const unit = filter.basis === "value" ? inputUnit(m.fmt) : "percentile";
+  const m = byKey[filter.key];                 // undefined if a custom measure was deleted
+  const unit = filter.basis === "value" ? inputUnit(m?.fmt ?? "ratio") : "percentile";
   return (
     <div className="filter-row">
       <MeasureSelect measures={measures} value={filter.key} onChange={(key) => onChange({ ...filter, key })} />
-      <Info measure={m} />
+      {m ? <Info measure={m} /> : <span className="error">no longer exists</span>}
       <select value={filter.basis} onChange={(e) => onChange({ ...filter, basis: e.target.value as Basis })}
         title="Filter on the value itself, or on its favourability rank (100 = most favourable)">
         <option value="value">value</option>
@@ -245,6 +246,7 @@ export function Screener({ shared }: { shared: Shared }) {
             <WeightsEditor weights={screen.weights} measures={measures} defaults={meta.catalog.default_weights}
               onChange={(weights) => set({ weights })} />
           </Menu>
+          <CustomMeasuresMenu shared={shared} />
           <span className="tabs" title="Which percentile rank colours the cells">
             <button type="button" className={screen.rankBasis === "pct" ? "on" : ""} onClick={() => set({ rankBasis: "pct" })}>Rank in universe</button>
             <button type="button" className={screen.rankBasis === "spct" ? "on" : ""} onClick={() => set({ rankBasis: "spct" })}>Rank in sector</button>

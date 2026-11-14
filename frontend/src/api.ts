@@ -11,7 +11,11 @@ export interface Catalog {
   components: Record<string, { label: string; fmt: Fmt; about: string }>;
   default_weights: Record<string, number>;
   not_for_financials: string[];
+  lines: { key: string; label: string }[];      // names a custom formula may use
 }
+/** A user-defined measure: a formula over statement lines and market values. */
+export interface CustomMeasure { key: string; label: string; formula: string; better: number; fmt: Fmt }
+export type CustomMeasureInput = Omit<CustomMeasure, "key">;
 export interface Freshness {
   data: string; step: string; series: number; oldest_fetch: string | null;
   newest_fetch: string | null; data_through: string | null; failing: number;
@@ -97,5 +101,9 @@ export const api = {
   screens: () => call<SavedScreen[]>("/api/screens"),
   saveScreen: (name: string, definition: unknown) => call(`/api/screens/${encodeURIComponent(name)}`, json("PUT", definition)),
   deleteScreen: (name: string) => call(`/api/screens/${encodeURIComponent(name)}`, { method: "DELETE" }),
+  measures: () => call<CustomMeasure[]>("/api/measures"),
+  createMeasure: (m: CustomMeasureInput) => call<CustomMeasure>("/api/measures", json("POST", m)),
+  updateMeasure: (key: string, m: CustomMeasureInput) => call<CustomMeasure>(`/api/measures/${encodeURIComponent(key)}`, json("PUT", m)),
+  deleteMeasure: (key: string) => call(`/api/measures/${encodeURIComponent(key)}`, { method: "DELETE" }),
   backtest: (config: BacktestConfig) => call<BacktestResult>("/api/backtest", json("POST", config)),
 };

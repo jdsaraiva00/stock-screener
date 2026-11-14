@@ -13,6 +13,7 @@ export interface Shared {
   byKey: Record<string, Measure>;
   screen: ScreenDef;
   setScreen: (s: ScreenDef) => void;
+  reload: () => void;           // refetch the catalog and the rows (after a custom measure changes)
 }
 
 function useHashRoute(): string[] {
@@ -174,7 +175,7 @@ export function App() {
       </div>
     );
   } else if (meta && rows && screen) {
-    const shared: Shared = { meta, rows, byKey, screen, setScreen };
+    const shared: Shared = { meta, rows, byKey, screen, setScreen, reload: load };
     if (view === "stock" && route[1]) body = <Stock key={route[1]} ticker={route[1]} shared={shared} />;
     else if (view === "market") body = <Market shared={shared} />;
     else if (view === "backtest") body = <Backtest shared={shared} />;

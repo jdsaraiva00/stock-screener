@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from screener import db
+from screener.analysis import custom
 from screener.analysis.backtest import BacktestConfig, Backtester, Factors
 from screener.analysis.catalog import COMPONENTS, MEASURES, catalog_json
 from screener.analysis.compute import load_history, load_members
@@ -30,6 +31,9 @@ IDENTITY = ["ticker", "name", "sector", "sub_industry", "financial", "price", "p
 USER_SCHEMA = """
 CREATE TABLE IF NOT EXISTS saved_screens (
     name TEXT PRIMARY KEY, definition TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS custom_measures (
+    key TEXT PRIMARY KEY, label TEXT NOT NULL, formula TEXT NOT NULL,
+    better INTEGER NOT NULL, fmt TEXT NOT NULL, updated_at TEXT NOT NULL);
 """
 
 
@@ -147,10 +151,15 @@ def create_app(cfg: Config, refresh_job=default_refresh_job) -> FastAPI:
     def has_table(conn: sqlite3.Connection, name: str) -> bool:
         return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
 
+    def measures() -> list[custom.CustomMeasure]:
+        """The user's own measures, computed on the fly wherever the snapshot is served."""
+        return [custom.CustomMeasure(r["key"], r["label"], r["formula"], int(r["better"]), r["fmt"])
+                for r in user().execute("SELECT * FROM custom_measures ORDER BY label")]
+
     def snapshot(conn: sqlite3.Connection) -> pd.DataFrame:
         if not has_table(conn, "snapshot"):
             raise HTTPException(503, "Scores have not been computed. Run `screener compute`.")
-        return pd.read_sql_query("SELECT * FROM snapshot", conn)
+        return custom.apply(pd.read_sql_query("SELECT * FROM snapshot", conn), measures())
 
     @app.get("/api/meta")
     def meta():
@@ -159,16 +168,61 @@ def create_app(cfg: Config, refresh_job=default_refresh_job) -> FastAPI:
         failures = [dict(r) for r in conn.execute(
             "SELECT step, key, last_attempt, last_success, error FROM refresh_log WHERE status='error' "
             "ORDER BY step, key LIMIT 200")]
+        catalog = catalog_json()
+        catalog["measures"] += [m.as_measure() for m in measures()]
+        catalog["lines"] = [{"key": k, "label": v} for k, v in custom.LINES.items()]
         return {"universe": cfg.universe, "as_of": info.get("as_of"), "computed_at": info.get("computed_at"),
-                "freshness": freshness(conn), "failures": failures, "catalog": catalog_json()}
+                "freshness": freshness(conn), "failures": failures, "catalog": catalog}
 
     @app.get("/api/screen")
     def screen():
         snap = snapshot(cache())
-        keys = [m.key for m in MEASURES]
+        keys = [m.key for m in MEASURES] + [m.key for m in measures()]
         cols = [c for c in IDENTITY if c in snap]
         cols += [c for k in keys for c in (k, f"{k}__pct", f"{k}__spct") if c in snap]
         return Response(_frame_json(snap[cols]), media_type="application/json")
+
+    @app.get("/api/measures")
+    def list_measures():
+        return [m.as_dict() for m in measures()]
+
+    def parse_measure(body: dict) -> custom.CustomMeasure:
+        try:
+            return custom.validate(str(body.get("label", "")), str(body.get("formula", "")),
+                                   int(body.get("better", 0)), str(body.get("fmt", "ratio")))
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/measures")
+    def create_measure(body: dict = Body(...)):
+        m = parse_measure(body)
+        conn = user()
+        if conn.execute("SELECT 1 FROM custom_measures WHERE key=?", (m.key,)).fetchone():
+            raise HTTPException(409, f"A measure named like that already exists ({m.key}). Edit it, or choose another name.")
+        conn.execute("INSERT INTO custom_measures VALUES(?,?,?,?,?,?)",
+                     (m.key, m.label, m.formula, m.better, m.fmt, db.now_utc()))
+        conn.commit()
+        return m.as_dict()
+
+    @app.put("/api/measures/{key}")
+    def update_measure(key: str, body: dict = Body(...)):
+        m = parse_measure(body)                      # the key is kept: screens keep referring to it
+        conn = user()
+        changed = conn.execute("UPDATE custom_measures SET label=?, formula=?, better=?, fmt=?, updated_at=? WHERE key=?",
+                               (m.label, m.formula, m.better, m.fmt, db.now_utc(), key)).rowcount
+        conn.commit()
+        if not changed:
+            raise HTTPException(404, "No such measure")
+        return custom.CustomMeasure(key, m.label, m.formula, m.better, m.fmt).as_dict()
+
+    @app.delete("/api/measures/{key}")
+    def delete_measure(key: str):
+        conn = user()
+        gone = conn.execute("DELETE FROM custom_measures WHERE key=?", (key,)).rowcount
+        conn.commit()
+        if not gone:
+            raise HTTPException(404, "No such measure")
+        return {"deleted": key}
 
     @app.get("/api/stock/{ticker}")
     def stock(ticker: str):
@@ -226,7 +280,8 @@ def create_app(cfg: Config, refresh_job=default_refresh_job) -> FastAPI:
     def backtest(config: dict = Body(...)):
         allowed = BacktestConfig.__dataclass_fields__
         try:
-            settings = BacktestConfig(**{k: v for k, v in config.items() if k in allowed})
+            settings = BacktestConfig(**{k: v for k, v in config.items() if k in allowed and k != "custom"})
+            settings.custom = [m.as_dict() for m in measures()]      # always the saved definitions
             result = backtester().run(settings)
         except (ValueError, TypeError) as exc:
             raise HTTPException(422, str(exc)) from exc

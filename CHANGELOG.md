@@ -1,5 +1,18 @@
 # Changelog
 
+## Custom measures (2026-11-14)
+
+- Define your own measures in the screener ("Custom measures" in the toolbar):
+  a formula over statement lines and market values, e.g. `total_debt / market_cap`
+  or `cash_and_short_term / pretax_income`, with a direction and a format. They
+  are ranked like built-in measures and work as columns, filters, composite
+  weights and in the backtest, computed on each rebalance date's cross-section.
+- More statement lines are kept per fiscal year for use in formulas: pre-tax
+  income, income tax, interest expense, depreciation and amortisation, SG&A,
+  R&D, cash, receivables, inventory, PP&E, and debt split current/non-current.
+  Run `screener compute` once after updating.
+- `Stock Screener.command`: a double-click launcher for macOS.
+
 ## Milestone 6 — polish and packaging proposal (2026-11-11)
 
 - "Update data now" in the freshness panel: runs the incremental refresh and the

@@ -168,6 +168,21 @@ fiscal 2026 statements (`tests/test_formulas.py`). Where the data forced a choic
 | Derived lines | Gross profit, total liabilities, EBIT and a few others are computed when not reported, and flagged. |
 | Basis | Annual figures as published. Trailing-twelve-month figures are not yet computed. |
 
+### Custom measures
+
+"Custom measures" in the screener toolbar defines a measure of your own: a name,
+a formula such as `total_debt / market_cap` or `cash_and_short_term / pretax_income`,
+whether higher or lower is favourable, and a format. Formulas may use `+ - * /`,
+parentheses, numbers, the statement lines and market values listed in the panel
+(`analysis/custom.py`, `LINES`) and the built-in measures. Nothing else is
+accepted. A missing input or a zero divisor gives a missing value.
+
+A custom measure is computed on the cross-section wherever built-in measures are:
+the screener, the market overview, the stock page and every rebalance date of a
+backtest (statement lines are point in time there too). It gets percentile ranks
+in the universe and the sector and can be a column, a filter or a composite
+weight. Definitions live in `data/user.sqlite` with the saved screens.
+
 A score is missing whenever an input is missing. Coverage of the stricter scores
 is therefore partial (see the CHANGELOG for current numbers).
 
