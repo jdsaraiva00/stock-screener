@@ -22,13 +22,16 @@ from screener.analysis.prices import PriceData
 log = logging.getLogger("screener.compute")
 
 
-def load_members(conn: sqlite3.Connection, universe: str) -> pd.DataFrame:
+def load_members(conn: sqlite3.Connection, universe: str, former: bool = False) -> pd.DataFrame:
+    """Today's members; with `former`, also companies that left the index (the
+    backtest needs them, the screener does not). Former members have no GICS sector."""
     return pd.read_sql_query(
         "SELECT u.ticker, u.cik, u.name, u.gics_sector AS sector, u.gics_sub_industry AS sub_industry, "
-        "f.sic, f.sic_description, p.sector AS provider_sector, p.industry AS provider_industry "
+        "u.removed_on, f.sic, f.sic_description, p.sector AS provider_sector, p.industry AS provider_industry "
         "FROM universe_membership u LEFT JOIN filer_info f ON f.cik=u.cik "
         "LEFT JOIN company_profile p ON p.ticker=u.ticker "
-        "WHERE u.universe=? AND u.removed_on IS NULL ORDER BY u.ticker", conn, params=(universe,))
+        f"WHERE u.universe=? {'' if former else 'AND u.removed_on IS NULL '}ORDER BY u.ticker",
+        conn, params=(universe,))
 
 
 def load_history(conn: sqlite3.Connection) -> pd.DataFrame:

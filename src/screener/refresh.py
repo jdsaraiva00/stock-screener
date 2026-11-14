@@ -19,13 +19,34 @@ from screener.concepts import STORED_TAGS, predecessors
 from screener.config import Config
 from screener.fundamentals import STATEMENT_FORMS
 from screener.providers import get_provider
-from screener.providers.base import DataProvider
+from screener.providers.base import DataProvider, NotSupported
 
 log = logging.getLogger("screener.refresh")
 
 STEPS = ["universe", "factors", "fundamentals", "prices", "profile", "statements"]
 PRICE_OVERLAP_DAYS = 10
 ADJUSTMENT_TOLERANCE = 1e-4
+REUSE_LEAD_DAYS = 30          # a former member's prices must begin this long before it left the index
+REUSE_GAP_DAYS = 60           # a longer gap after the removal means the symbol now belongs to another company
+
+
+def trim_former(frame: pd.DataFrame, removed_on: str) -> pd.DataFrame | None:
+    """Prices of a company that left the index on `removed_on`, guarded against
+    ticker reuse. None if the series begins after the removal (the symbol belongs
+    to another company now); rows after the first long gap following the removal
+    are dropped for the same reason. Nothing is filled in."""
+    if frame.empty:
+        return None
+    dates = pd.to_datetime(frame["date"])
+    removed = pd.Timestamp(removed_on)
+    if dates.min() > removed - pd.Timedelta(days=REUSE_LEAD_DAYS):
+        return None
+    after = dates[dates >= removed]
+    if len(after) > 1:
+        breaks = after[after.diff().dt.days > REUSE_GAP_DAYS]
+        if len(breaks):
+            return frame[dates < breaks.iloc[0]].reset_index(drop=True)
+    return frame
 
 
 @dataclass
@@ -108,10 +129,13 @@ class Refresher:
         db.log_error(self.conn, step, key, message)
         result.failed += 1
 
-    def members(self, tickers: list[str] | None = None) -> list[sqlite3.Row]:
-        rows = self.conn.execute(
-            "SELECT ticker, cik FROM universe_membership WHERE universe=? AND removed_on IS NULL "
-            "ORDER BY ticker", (self.cfg.universe,)).fetchall()
+    def members(self, tickers: list[str] | None = None, former: bool = False) -> list[sqlite3.Row]:
+        """Current members; with `former`, also companies that left the index since
+        price_start (the backtest wants their prices and filed fundamentals)."""
+        sql = ("SELECT ticker, cik, removed_on FROM universe_membership WHERE universe=? "
+               "AND (removed_on IS NULL" + (" OR removed_on>=?" if former else "") + ") ORDER BY ticker")
+        args = (self.cfg.universe, self.cfg.price_start) if former else (self.cfg.universe,)
+        rows = self.conn.execute(sql, args).fetchall()
         if tickers is not None:
             wanted = set(tickers)
             rows = [r for r in rows if r["ticker"] in wanted]
@@ -162,12 +186,61 @@ class Refresher:
             self.conn.executemany(
                 "UPDATE universe_membership SET removed_on=? WHERE universe=? AND ticker=?",
                 [(today, universe, t) for t in gone])
+            recorded = self._store_changes(universe, provider, current, today)
             db.log_ok(self.conn, "universe", universe,
-                      f"{len(members)} members, {len(gone)} newly removed")
+                      f"{len(members)} members, {len(gone)} newly removed, {recorded} recorded changes")
             result.ok += 1
         except Exception as exc:
             self._fail("universe", universe, exc, result)
         return result
+
+    def _store_changes(self, universe: str, provider: DataProvider, current: set[str], today: str) -> int:
+        """Keep the source's record of additions and removals, and give every company
+        that left the index since price_start a membership row with its removal date,
+        so the other steps fetch its prices and (if the SEC still lists it) its filings."""
+        try:
+            changes = provider.universe_changes(universe)
+        except NotSupported:
+            return 0
+        now = db.now_utc()
+        self.conn.execute("DELETE FROM universe_changes WHERE universe=?", (universe,))
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO universe_changes(universe,date,action,ticker,name,reason,source,fetched_at) "
+            "VALUES(?,?,?,?,?,?,?,?)",
+            [(universe, c.date, c.action, c.ticker, c.name, c.reason, provider.name, now) for c in changes])
+        by_ticker: dict[str, list] = {}
+        for c in changes:
+            by_ticker.setdefault(c.ticker, []).append(c)
+        ciks = self._ticker_ciks()
+        rows = []
+        for ticker, events in by_ticker.items():
+            removals = [e for e in events if e.action == "removed"]
+            if ticker in current or not removals:
+                continue
+            last = max(removals, key=lambda e: e.date)
+            if last.date < self.cfg.price_start:
+                continue
+            added = [e.date for e in events if e.action == "added" and e.date < last.date]
+            rows.append((universe, ticker, ciks.get(ticker), last.name, max(added) if added else None,
+                         today, last.date, provider.name, now))
+        self.conn.executemany(
+            "INSERT INTO universe_membership(universe,ticker,cik,name,gics_sector,gics_sub_industry,"
+            "date_added,first_seen,removed_on,source,fetched_at) VALUES(?,?,?,?,NULL,NULL,?,?,?,?,?) "
+            "ON CONFLICT(universe,ticker) DO UPDATE SET "
+            "cik=COALESCE(universe_membership.cik,excluded.cik),name=COALESCE(universe_membership.name,excluded.name),"
+            "date_added=COALESCE(universe_membership.date_added,excluded.date_added),"
+            "removed_on=excluded.removed_on,fetched_at=excluded.fetched_at "
+            "WHERE universe_membership.removed_on IS NOT NULL", rows)
+        return len(changes)
+
+    def _ticker_ciks(self) -> dict[str, int]:
+        try:
+            return self.provider("fundamentals").ticker_ciks()
+        except NotSupported:
+            return {}
+        except Exception as exc:          # e.g. no EDGAR contact line configured, or the SEC is down
+            log.warning("ticker to CIK lookup unavailable, former members get no filings: %s", exc)
+            return {}
 
     # ------------------------------------------------------------------ factors
     def step_factors(self, tickers, force) -> StepResult:
@@ -216,9 +289,12 @@ class Refresher:
         result = StepResult()
         provider = self.provider("fundamentals")
         companies: dict[int, str] = {}
-        for row in self.members(tickers):
+        for row in self.members(tickers, former=True):
             if row["cik"] is None:
-                self._fail("fundamentals", row["ticker"], ValueError("no CIK known for ticker"), result)
+                if row["removed_on"]:
+                    result.skipped += 1          # left the index and the SEC no longer lists it: nothing to fetch
+                else:
+                    self._fail("fundamentals", row["ticker"], ValueError("no CIK known for ticker"), result)
             else:
                 companies.setdefault(row["cik"], row["ticker"])
         for n, (cik, key) in enumerate(companies.items(), 1):
@@ -291,8 +367,9 @@ class Refresher:
             "full_refetches=full_refetches+?",
             (ticker, source, db.now_utc(), ticker, 1 if replace else 0))
 
-    def _price_batches(self, tickers: list[str], start: str, result: StepResult):
-        """Yield (ticker, frame) for each ticker with data; log the ones without."""
+    def _price_batches(self, tickers: list[str], start: str, result: StepResult, former: dict[str, str]):
+        """Yield (ticker, frame) for each ticker with data; log the ones without. A
+        former member with no data at the source is expected (delisted), not a failure."""
         provider = self.provider("prices")
         size = self.cfg.yahoo_price_batch
         for i in range(0, len(tickers), size):
@@ -307,13 +384,19 @@ class Refresher:
             for ticker in batch:
                 if ticker in frames:
                     yield ticker, frames[ticker]
+                elif ticker in former:
+                    db.log_ok(self.conn, "prices", ticker,
+                              f"no price data at source; left the index on {former[ticker]}, probably delisted")
+                    result.skipped += 1
                 else:
                     self._fail("prices", ticker, ValueError("source returned no price rows"), result)
 
     def step_prices(self, tickers, force) -> StepResult:
         result = StepResult()
         source = self.provider("prices").name
-        wanted = [r["ticker"] for r in self.members(tickers)]
+        rows = self.members(tickers, former=True)
+        former = {r["ticker"]: r["removed_on"] for r in rows if r["removed_on"]}
+        wanted = [r["ticker"] for r in rows]
         wanted += [b for b in self.cfg.benchmarks if tickers is None or b in tickers]
         due = []
         for ticker in wanted:
@@ -329,11 +412,18 @@ class Refresher:
         if incremental:
             oldest = min(last[t] for t in incremental)
             start = (date.fromisoformat(oldest) - timedelta(days=PRICE_OVERLAP_DAYS)).isoformat()
-            for ticker, frame in self._price_batches(incremental, start, result):
+            for ticker, frame in self._price_batches(incremental, start, result, former):
                 try:
                     stored = pd.read_sql_query(
                         "SELECT date, close, adj_close FROM prices_daily WHERE ticker=? AND date>=?",
                         self.conn, params=(ticker, start))
+                    if ticker in former and stored.empty:
+                        # Nothing stored in the overlap window: the data resumed after a gap,
+                        # which for a company that left the index means the symbol was reused.
+                        db.log_ok(self.conn, "prices", ticker, f"no new data since {last[ticker]}; "
+                                  "later rows belong to another company (symbol reused)")
+                        result.skipped += 1
+                        continue
                     if adjustment_changed(stored, frame):
                         log.info("prices: %s history was re-adjusted at source, reloading in full", ticker)
                         full.append(ticker)
@@ -344,8 +434,16 @@ class Refresher:
                 except Exception as exc:
                     self._fail("prices", ticker, exc, result)
 
-        for ticker, frame in self._price_batches(full, self.cfg.price_start, result):
+        for ticker, frame in self._price_batches(full, self.cfg.price_start, result, former):
             try:
+                if ticker in former:
+                    frame = trim_former(frame, former[ticker])
+                    if frame is None:
+                        db.log_ok(self.conn, "prices", ticker, f"price history at source does not predate its removal "
+                                  f"on {former[ticker]} (a stale quote after delisting, or the symbol reused by "
+                                  f"another company); not stored")
+                        result.skipped += 1
+                        continue
                 self._write_prices(ticker, frame, source, replace=True)
                 db.log_ok(self.conn, "prices", ticker,
                           f"full history {frame['date'].min()} to {frame['date'].max()}")

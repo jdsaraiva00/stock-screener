@@ -49,7 +49,8 @@ export function Backtest({ shared }: { shared: Shared }) {
     if (!result) return [];
     const out: Line[] = [{ name: `Top ${result.config.top_n} portfolio`, color: "series-1", values: result.curve.portfolio }];
     if (result.curve.benchmark) out.push({ name: "S&P 500, total return", color: "series-2", values: result.curve.benchmark });
-    out.push({ name: "All current members, equal-weighted", color: "muted", values: result.curve.universe, dashed: true });
+    out.push({ name: result.coverage.membership ? "All members at each date, equal-weighted" : "All current members, equal-weighted",
+      color: "muted", values: result.curve.universe, dashed: true });
     return out;
   }, [result]);
 
@@ -121,11 +122,17 @@ export function Backtest({ shared }: { shared: Shared }) {
       <div className="panel stack" style={{ gap: 6 }}>
         <h2>Read this before trusting a result</h2>
         <div className="notice">
-          <b>Survivorship bias.</b> The universe is the companies in the S&P 500 today. Companies that went bankrupt,
-          were acquired or fell out of the index are missing, and today's members are by definition the ones that
-          did well. Every result here is biased upward. The dashed line, all current members held in equal weights,
-          shows how large that effect is on its own: a screen is only interesting to the extent it beats that line,
-          not the index.
+          <b>Survivorship bias.</b> On each date only that date's index members are eligible, using the record of
+          additions and removals (reasonably complete from 2011). Companies that left the index are included when
+          free data has their prices: that covers most of those dropped for size, but few of those acquired and
+          almost none that went bankrupt, so results are still biased upward, less than with today's members alone.
+          {result?.coverage.membership && (
+            <> With this cache: {result.coverage.former_members} former members in the record, {result.coverage.former_with_prices} with
+            prices and {result.coverage.former_with_fundamentals} with filed fundamentals.</>
+          )}
+          {result && !result.coverage.membership && <> This cache has no membership record yet: run a data update to fetch it.</>}
+          {" "}The dashed line, all members at each date held in equal weights, shows how large the universe effect is
+          on its own: a screen is only interesting to the extent it beats that line, not the index.
         </div>
         <div className="notice">
           <b>Date coverage.</b>{" "}

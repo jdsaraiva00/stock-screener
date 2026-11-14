@@ -33,6 +33,16 @@ class Member:
 
 
 @dataclass(frozen=True)
+class Change:
+    """An index addition or removal, as the universe source records it."""
+    date: str           # effective date
+    action: str         # added | removed
+    ticker: str         # as used at the time; Yahoo/SEC style
+    name: str | None
+    reason: str | None
+
+
+@dataclass(frozen=True)
 class Profile:
     ticker: str
     name: str | None
@@ -94,6 +104,14 @@ class DataProvider:
 
     def universe_members(self, universe: str) -> list[Member]:
         raise NotSupported(f"{self.name} does not supply universe members")
+
+    def universe_changes(self, universe: str) -> list[Change]:
+        """Additions and removals over time, where the source records them."""
+        raise NotSupported(f"{self.name} does not supply the history of universe changes")
+
+    def ticker_ciks(self) -> dict[str, int]:
+        """Ticker -> SEC company id for currently listed companies."""
+        raise NotSupported(f"{self.name} does not supply ticker to CIK lookups")
 
     def prices(self, tickers: list[str], start: str) -> dict[str, pd.DataFrame]:
         """Daily bars per ticker from `start`: columns date, open, high, low, close,

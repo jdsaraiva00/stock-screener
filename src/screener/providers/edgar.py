@@ -20,6 +20,7 @@ from screener.providers.http import ThrottledClient
 
 FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
+TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"     # listed companies only
 # Filings that carry financial statements.
 REPORT_FORMS = {"10-K", "10-K/A", "10-Q", "10-Q/A", "10-KT", "10-QT", "20-F", "20-F/A", "40-F", "40-F/A"}
 
@@ -69,6 +70,13 @@ class EdgarProvider(DataProvider):
 
     def filer_info(self, cik: int) -> FilerInfo:
         return parse_submissions(self.http.get(SUBMISSIONS_URL.format(cik=cik)).json())
+
+    def ticker_ciks(self) -> dict[str, int]:
+        """The SEC's own ticker list. Delisted companies are not in it, so a former
+        index member found here is still listed under that symbol."""
+        doc = self.http.get(TICKERS_URL).json()
+        return {str(v["ticker"]).upper().replace(".", "-"): int(v["cik_str"])
+                for v in doc.values() if v.get("ticker") and v.get("cik_str") is not None}
 
     def fundamentals(self, cik: int, offline: bool = False) -> Iterable[Fact]:
         path = self.raw_path(cik)

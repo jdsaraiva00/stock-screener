@@ -22,6 +22,7 @@ from screener.analysis import custom
 from screener.analysis.backtest import BacktestConfig, Backtester, Factors
 from screener.analysis.catalog import COMPONENTS, MEASURES, catalog_json
 from screener.analysis.compute import load_history, load_members
+from screener.analysis.membership import load_intervals
 from screener.analysis.prices import PriceData
 from screener.config import Config
 
@@ -272,8 +273,9 @@ def create_app(cfg: Config, refresh_job=default_refresh_job) -> FastAPI:
         key = stamp[0] if stamp else ""
         if key not in engines:
             engines.clear()
-            engines[key] = Backtester(load_members(conn, cfg.universe), load_history(conn),
-                                      PriceData.load(conn), Factors.load(conn))
+            engines[key] = Backtester(load_members(conn, cfg.universe, former=True), load_history(conn),
+                                      PriceData.load(conn), Factors.load(conn),
+                                      membership=load_intervals(conn, cfg.universe))
         return engines[key]
 
     @app.post("/api/backtest")

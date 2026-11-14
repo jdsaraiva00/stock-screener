@@ -53,6 +53,8 @@ export interface BacktestResult {
   coverage: {
     first_rebalance: string; first_day: string; last_date: string; rebalances: number;
     factor_data_through: string | null; benchmark: string | null;
+    membership: boolean; members_today?: number; former_members?: number;
+    former_with_prices?: number; former_with_fundamentals?: number; record_from?: string | null;
   };
   curve: { dates: string[]; portfolio: number[]; universe: number[]; benchmark: number[] | null };
   stats: Record<"portfolio" | "universe" | "benchmark", Record<string, number | null> | undefined>;

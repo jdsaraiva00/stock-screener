@@ -8,10 +8,13 @@ What it does on each rebalance date (the last trading day of the period):
      it trades at; holdings then drift until the next rebalance;
   4. charges the cost setting on every dollar bought or sold.
 
-What it cannot do with free data, and says so in its notes: the universe is
-today's index members, so companies that failed or were dropped are missing and
-results are biased upward. The "all current members, equal-weighted" line shows
-how much of a result is that bias and equal weighting rather than the screen.
+Survivorship: on each date only that date's index members are eligible, from
+the cached record of additions and removals (analysis.membership). Former
+members are in the universe when the cache holds their prices; with free data
+that is most of the companies dropped for size and few of those acquired or
+bankrupt, so results are still biased upward, and the notes say by how much
+the data falls short. The "all members, equal-weighted" line shows how much of
+a result is the universe and equal weighting rather than the screen.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ import pandas as pd
 
 from screener.analysis import custom, engine
 from screener.analysis.catalog import DEFAULT_WEIGHTS, MEASURES
+from screener.analysis.membership import UNKNOWN, members_on
 from screener.analysis.prices import PriceData
 
 BENCHMARKS = ["^SP500TR", "SPY"]          # first one with prices is used
@@ -197,8 +201,13 @@ class Backtester:
     """Holds the cache-derived inputs and remembers each date's cross-section, so
     trying different weights or filters does not recompute them."""
 
-    def __init__(self, members: pd.DataFrame, history: pd.DataFrame, px: PriceData, factors: Factors):
+    def __init__(self, members: pd.DataFrame, history: pd.DataFrame, px: PriceData, factors: Factors,
+                 membership: pd.DataFrame | None = None):
+        """membership: intervals from analysis.membership.intervals, or None to treat
+        every member as eligible on every date (today's members only)."""
         self.members, self.history, self.px, self.factors = members, history, px, factors
+        self.membership = membership
+        self._eligible: dict[str, set[str]] = {}
         self._sections: dict[str, pd.DataFrame] = {}
         keys = [m.key for m in MEASURES if m.key != "composite"]
         # Statement lines are kept too, so user-defined formulas can be evaluated on each date.
@@ -211,10 +220,21 @@ class Backtester:
             self._sections[date] = frame[[c for c in self._keep if c in frame]]
         return self._sections[date]
 
+    def eligible(self, date: str) -> set[str] | None:
+        """Index members on `date`, or None when no membership record is loaded."""
+        if self.membership is None:
+            return None
+        if date not in self._eligible:
+            self._eligible[date] = members_on(self.membership, date)
+        return self._eligible[date]
+
     def select(self, date: str, cfg: BacktestConfig) -> tuple[list[str], list[float], int, int]:
         """Tickers chosen on `date`, their composite scores, how many were eligible,
         and the smallest number of eligible stocks that have any one weighted measure."""
         frame = self.section(date)
+        members = self.eligible(date)
+        if members is not None:
+            frame = frame[frame.index.isin(members)]
         # Custom measures the screen refers to, computed and ranked on this date's cross-section.
         wanted = {k for k, w in cfg.weights.items() if w > 0} | {f["key"] for f in cfg.filters}
         needed = [custom.CustomMeasure(**m) for m in cfg.custom if m["key"] in wanted]
@@ -243,6 +263,29 @@ class Backtester:
                         if w > 0 and f"{k}__pct" in ranked), default=0)
         return top.index.tolist(), top.tolist(), len(score), thinnest
 
+    def universe_coverage(self) -> tuple[str, dict]:
+        """A sentence on what the universe is, and the numbers behind it: how many
+        former members exist in the record, and how many of them have data."""
+        current = int(self.members["removed_on"].isna().sum()) if "removed_on" in self.members else len(self.members)
+        if self.membership is None:
+            return (f"Universe: the {current} tickers in the index today. Companies that went bankrupt, were "
+                    f"acquired or were dropped from the index are not in the data, so results are biased upward.",
+                    {"membership": False})
+        former = self.members[self.members["removed_on"].notna()] if "removed_on" in self.members else self.members.iloc[0:0]
+        priced = [t for t in former["ticker"] if t in self.px.adj and self.px.adj[t].notna().any()]
+        with_fundamentals = int(former["cik"].isin(self.history["cik"]).sum()) if len(former) else 0
+        starts = self.membership.loc[self.membership["start"] != UNKNOWN, "start"]
+        since = min(starts) if len(starts) else None
+        removed_since = former["removed_on"].min() if len(former) else None
+        note = (f"Universe: on each date, the index members at that date, from the record of additions and "
+                f"removals (reasonably complete from 2011, thin before 2007). Of {len(former)} companies that "
+                f"left the index since {removed_since or 'the record began'}, {len(priced)} have price data and "
+                f"{with_fundamentals} filed fundamentals; the rest, mostly acquired or bankrupt, are missing, so "
+                f"results are still biased upward, though less than with today's members alone.")
+        return note, {"membership": True, "members_today": current, "former_members": len(former),
+                      "former_with_prices": len(priced), "former_with_fundamentals": with_fundamentals,
+                      "record_from": since}
+
     def run(self, cfg: BacktestConfig) -> dict:
         if cfg.top_n < 1:
             raise ValueError("top_n must be at least 1")
@@ -267,7 +310,9 @@ class Backtester:
             schedule.append((p, tickers))
             holdings.append({"date": date, "tickers": tickers, "scores": scores, "eligible": eligible})
             frame = self.section(date)
-            everyone.append((p, frame.index[frame["price"].notna()].tolist()))
+            priced = frame.index[frame["price"].notna()]
+            members = self.eligible(date)
+            everyone.append((p, [t for t in priced if members is None or t in members]))
         if not schedule:
             raise ValueError("On no rebalance date does every weighted measure exist for at least twice the "
                              "requested number of eligible stocks. Loosen the filters, lower N, or change the weights.")
@@ -296,12 +341,12 @@ class Backtester:
             stats["benchmark"] = performance(pd.Series(benchmark.values, index=index), rf)
 
         first, last = holdings[0]["date"], index[-1]
+        universe_note, survivorship = self.universe_coverage()
         notes = [
             f"Simulated from {index[0]} to {last}: {len(schedule)} rebalances, the first chosen on {first}. "
             f"The start is the first date on which every weighted measure exists for at least "
             f"{2 * cfg.top_n} eligible stocks; filed fundamentals begin around 2009-2011.",
-            f"Universe: the {len(self.members)} tickers in the index today. Companies that went bankrupt, were "
-            f"acquired or were dropped from the index are not in the data, so results are biased upward.",
+            universe_note,
         ]
         if self.factors.through:
             notes.append(f"Sharpe ratios and factor regressions use risk-free and factor data published through "
@@ -316,7 +361,7 @@ class Backtester:
             "config": cfg.__dict__,
             "coverage": {"first_rebalance": first, "first_day": index[0], "last_date": last,
                          "rebalances": len(schedule), "factor_data_through": self.factors.through,
-                         "benchmark": bench_name},
+                         "benchmark": bench_name, **survivorship},
             "curve": {"dates": index.tolist(), "portfolio": portfolio.tolist(), "universe": universe.tolist(),
                       "benchmark": benchmark.tolist() if benchmark is not None else None},
             "stats": stats,

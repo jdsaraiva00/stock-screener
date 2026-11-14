@@ -25,6 +25,16 @@ CREATE TABLE IF NOT EXISTS universe_membership (
     PRIMARY KEY (universe, ticker)
 );
 
+-- Additions to and removals from the index over time, as the source records
+-- them. analysis.membership turns this into who was a member on a given date.
+CREATE TABLE IF NOT EXISTS universe_changes (
+    universe TEXT NOT NULL, date TEXT NOT NULL,
+    action   TEXT NOT NULL,                -- added | removed
+    ticker   TEXT NOT NULL, name TEXT, reason TEXT,
+    source TEXT NOT NULL, fetched_at TEXT NOT NULL,
+    PRIMARY KEY (universe, date, action, ticker)
+) WITHOUT ROWID;
+
 -- One row per trading day. close is split-adjusted only; adj_close is also
 -- dividend-adjusted (total return). Fetch time is per ticker, in price_series_meta.
 CREATE TABLE IF NOT EXISTS prices_daily (

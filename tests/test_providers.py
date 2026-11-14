@@ -147,3 +147,25 @@ def test_http_gives_up_and_does_not_retry_a_refusal():
 
     with pytest.raises(ProviderError, match="HTTP 500"):
         _client(lambda r: httpx.Response(500), retries=2).get("https://example.test/x")
+
+
+def test_wikipedia_changes_table():
+    from pathlib import Path
+
+    from screener.providers.wikipedia import parse_changes
+
+    html = (Path(__file__).parent / "fixtures" / "sp500_changes_trimmed.html").read_text()
+    changes = parse_changes(html, min_rows=40)
+    assert changes[0].__dict__ == {"date": "2026-10-30", "action": "added", "ticker": "OKTA", "name": "Okta, Inc.",
+                                   "reason": "S&P 500 constituent Kimberly-Clark acquired Kenvue."}
+    assert changes[1].ticker == "KVUE" and changes[1].action == "removed"
+    only_removed = [c for c in changes if c.date == "2026-10-06" and c.ticker == "CTVA"]
+    assert len(only_removed) == 1 and only_removed[0].action == "removed"
+    assert all(c.action in ("added", "removed") and c.date[:4] >= "1976" for c in changes)
+    with pytest.raises(ProviderError, match="at least 300"):
+        parse_changes(html)
+    with pytest.raises(ProviderError, match="not found"):
+        parse_changes(html.replace('id="changes"', 'id="other"'), min_rows=1)
+    from screener.providers.wikipedia import _ticker
+    assert _ticker("CT.VA |") == "CT-VA" and _ticker(" BRK.B ") == "BRK-B"      # page artefacts, symbol style
+    assert _ticker(float("nan")) is None and _ticker("|") is None

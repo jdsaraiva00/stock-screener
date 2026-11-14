@@ -138,3 +138,24 @@ def test_composite_does_not_start_on_price_data_alone(backtester):
     both = backtester.run(BacktestConfig(weights={"gross_profitability": 1, "mom_12_1": 1}, top_n=3))
     momentum_only = backtester.run(BacktestConfig(weights={"mom_12_1": 1}, top_n=3))
     assert momentum_only["coverage"]["first_rebalance"] < FILED < both["coverage"]["first_rebalance"]
+
+
+def test_only_members_on_the_date_are_eligible():
+    """With a membership record, a stock joins the eligible universe on its addition
+    date, and the equal-weighted universe line follows the same rule."""
+    from screener.analysis.backtest import Backtester as BT
+
+    members, history, px = _universe()
+    cut = px.adj.index[-45]
+    membership = pd.DataFrame({"ticker": members["ticker"], "start": ["" if t != "T11" else cut for t in members["ticker"]],
+                               "end": [""] * len(members)})
+    bt = BT(members, history, px, NO_FACTORS, membership=membership)
+    cfg = BacktestConfig(weights={"gross_profitability": 1}, top_n=3, rebalance="monthly", cost_bps=0)
+    result = bt.run(cfg)
+    before = [h for h in result["holdings"] if h["date"] < cut]
+    after = [h for h in result["holdings"] if h["date"] >= cut]
+    assert before and all("T11" not in h["tickers"] for h in before)   # the best stock, but not a member yet
+    assert after and all("T11" in h["tickers"] for h in after)
+    assert result["coverage"]["membership"] is True and "members at that date" in result["notes"][1]
+    plain = BT(members, history, px, NO_FACTORS).run(cfg)
+    assert plain["coverage"]["membership"] is False and all("T11" in h["tickers"] for h in plain["holdings"])

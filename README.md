@@ -67,6 +67,8 @@ and `npm --prefix frontend run dev` side by side; the dev server proxies `/api`.
 | Data | Source | Notes |
 |---|---|---|
 | S&P 500 members, GICS sector | Wikipedia, "List of S&P 500 companies" | Current members only. No free official list exists. |
+| Index additions and removals | Wikipedia, "Historical components of the S&P 500" | Reasonably complete from 2011. Gives the backtest who was a member when. |
+| Ticker to SEC company id | SEC `company_tickers.json` | Listed companies only; a delisted former member gets no filings. |
 | Daily prices, dividends, splits | Yahoo Finance via `yfinance` | From 2000. Unofficial; can fail or be rate-limited. |
 | Market cap, sector, industry | Yahoo Finance via `yfinance` | Current values only. |
 | Recent statements (about 4 years) | Yahoo Finance via `yfinance` | Used as a cross-check on EDGAR. |
@@ -203,10 +205,19 @@ eligible stocks, so a screen using fundamentals cannot quietly run on prices alo
 
 Limits that the page states next to every result:
 
-- **Survivorship bias.** The universe is today's index members. The page plots
-  "all current members, equal-weighted" so the size of the bias is visible; with
-  the current cache that line returns about 18% a year from 2010 against about
-  14% for the S&P 500 itself.
+- **Survivorship bias.** On each rebalance date only that date's index members
+  are eligible, using Wikipedia's record of additions and removals (reasonably
+  complete from 2011, thin before 2007; `universe_changes`, `analysis/membership.py`).
+  Companies that left the index are fetched like members and included when the
+  source has their prices: with free data that is most of those dropped for
+  size and few of those acquired or bankrupt, so results are still biased
+  upward, and the page shows how many former members have data. A former
+  member's price series is dropped if it begins after the removal, and cut at
+  the first long gap after it, because that means the symbol was reused by
+  another company. Former members have no GICS sector (sector filters and
+  sector ranks leave them out); `screener show` and the stock page cover
+  current members only. The page plots "all members at each date,
+  equal-weighted" so the size of what remains is visible.
 - **Coverage.** Filed fundamentals begin around 2009-2011.
 - **Publication decay.** McLean and Pontiff (2016).
 - Market cap for past dates is price times filed diluted shares, which is wrong

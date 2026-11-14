@@ -1,5 +1,20 @@
 # Changelog
 
+## Survivorship bias (2026-11-14)
+
+- The refresh keeps Wikipedia's record of S&P 500 additions and removals
+  (`universe_changes`) and adds every company that left the index since 2000
+  to the universe with its removal date. Their prices and, where the SEC still
+  lists the ticker, their filings are fetched like members'. A delisted company
+  with no data at the source is noted, not counted as a failure.
+- The backtest makes only that date's members eligible on each rebalance date,
+  including former members with data, and its universe line is "all members
+  at each date". Its notes and the page state how many former members the
+  cache covers. Guard against reused symbols: a former member's prices are
+  dropped if they begin after the removal and cut at the first long gap after it.
+- Run `screener refresh` (or "Update data now") once to fetch the record and
+  the former members' data; `screener compute` then includes their filings.
+
 ## Custom measures (2026-11-14)
 
 - Define your own measures in the screener ("Custom measures" in the toolbar):

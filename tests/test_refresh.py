@@ -46,11 +46,15 @@ class FakeSource(DataProvider):
         self.doc = apple_doc
         self.facts_calls = 0
         self.accession = "A1"
+        self.changes = []
 
     def universe_members(self, universe):
         return [Member("AAPL", "Apple", APPLE_CIK, "Tech", "Hardware", "1982-11-30"),
                 Member("BAD", "Broken Co", 111, "Tech", "Hardware", None),
                 Member("GOOD", "Fine Co", 222, "Energy", "Oil", None)]
+
+    def universe_changes(self, universe):
+        return self.changes
 
     def profile(self, ticker):
         if ticker == "BAD":
@@ -187,3 +191,52 @@ def test_predecessor_filings_after_the_handover_are_ignored():
     merged = merge_histories([successor, predecessor, oldest])
     assert sorted(f.value for f in merged) == [1, 2, 3, 4, 6]
     assert merge_histories([[], predecessor]) == predecessor
+
+
+def test_former_members_are_recorded_and_their_data_fetched_with_care(job, conn):
+    """Companies that left the index get a membership row with the removal date,
+    their prices are fetched with a guard against reused symbols, and a delisted
+    company with no data is expected rather than a failure."""
+    from screener.providers.base import Change
+    from screener.refresh import trim_former
+
+    refresher, source = job
+    source.changes = [
+        Change("2015-03-23", "removed", "OLD", "Old Co", "Market capitalization changes."),
+        Change("2012-01-01", "added", "OLD", "Old Co", None),
+        Change("2020-06-01", "removed", "REUSED", "Reused Co", "Acquired."),
+        Change("2021-01-04", "removed", "GONE", "Gone Co", "Bankrupt."),
+        Change("2016-01-01", "added", "AAPL", "Apple", None),
+        Change("1999-01-01", "removed", "ANCIENT", "Ancient Co", None),     # before price_start: ignored
+    ]
+    series = {
+        "OLD": bars([("2014-01-02", 5.0, 5.0, 0, 0), ("2015-03-20", 6.0, 6.0, 0, 0),
+                     ("2015-04-01", 6.5, 6.5, 0, 0), ("2019-01-02", 9.0, 9.0, 0, 0)]),   # gap: another company
+        "REUSED": bars([("2022-01-03", 1.0, 1.0, 0, 0)]),                                # begins after removal
+        "AAPL": bars([("2026-11-06", 10.0, 9.0, 0, 0)]), "GOOD": bars([("2026-11-06", 10.0, 9.0, 0, 0)]),
+    }
+    source.prices = lambda tickers, start: {t: f for t, f in series.items() if t in tickers}
+    results = refresher.run(["universe", "prices", "fundamentals"])
+
+    rows = {r["ticker"]: dict(r) for r in conn.execute("SELECT * FROM universe_membership")}
+    assert rows["OLD"]["removed_on"] == "2015-03-23" and rows["OLD"]["date_added"] == "2012-01-01"
+    assert rows["OLD"]["name"] == "Old Co" and rows["OLD"]["cik"] is None and rows["OLD"]["gics_sector"] is None
+    assert "ANCIENT" not in rows and rows["AAPL"]["removed_on"] is None
+    assert conn.execute("SELECT COUNT(*) FROM universe_changes").fetchone()[0] == 6
+    assert [r["ticker"] for r in refresher.members()] == ["AAPL", "BAD", "GOOD"]          # the screener's universe
+    assert [r["ticker"] for r in refresher.members(former=True)] == ["AAPL", "BAD", "GONE", "GOOD", "OLD", "REUSED"]
+
+    dates = [r[0] for r in conn.execute("SELECT date FROM prices_daily WHERE ticker='OLD' ORDER BY date")]
+    assert dates == ["2014-01-02", "2015-03-20", "2015-04-01"]                             # cut at the gap
+    assert conn.execute("SELECT COUNT(*) FROM prices_daily WHERE ticker='REUSED'").fetchone()[0] == 0
+    log = {r["key"]: (r["status"], r["detail"] or "") for r in
+           conn.execute("SELECT key, status, detail FROM refresh_log WHERE step='prices'")}
+    assert log["REUSED"][0] == "ok" and "reused" in log["REUSED"][1]
+    assert log["GONE"][0] == "ok" and "delisted" in log["GONE"][1]
+    assert log["BAD"][0] == "error" and results["prices"].failed == 1     # a current member without data still fails
+    # Former members the SEC no longer lists are skipped quietly, not logged as failures.
+    assert {r[0] for r in conn.execute("SELECT key FROM refresh_log WHERE step='fundamentals' AND status='error'")} == {"BAD", "GOOD"}
+
+    assert trim_former(bars([]), "2020-01-01") is None
+    kept = trim_former(bars([("2019-01-02", 1, 1, 0, 0), ("2020-01-15", 1, 1, 0, 0)]), "2020-01-01")
+    assert len(kept) == 2                                                  # a short gap after removal is fine
