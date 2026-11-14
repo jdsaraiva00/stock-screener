@@ -48,6 +48,10 @@ A refresh is safe to interrupt and rerun: each ticker is committed on its own,
 anything refreshed within the windows in `[refresh] max_age_hours` is skipped,
 and a ticker that fails is logged and skipped. The log is `data/logs/refresh.log`.
 
+To start the app without a terminal, double-click `Stock Screener.command` in
+Finder; it runs `screener serve` in a Terminal window, and closing that window
+stops the app. A Finder alias of it (on the Desktop, say) works the same way.
+
 The app listens on 127.0.0.1 only, on any free port unless `[server] port` is set
 in `config.toml` or `--port` is given. Pages read only the cache. To update it,
 use "Update data now" in the freshness panel (top right), or run `refresh` in a
